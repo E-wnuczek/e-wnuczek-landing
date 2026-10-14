@@ -2,24 +2,34 @@
 (function () {
   'use strict';
   if (!['ewnuczek.pl','www.ewnuczek.pl'].includes(location.hostname)) return;
-  const C='ewnuczek_analytics_consent_v1', I='ewnuczek_analytics_internal_v1';
+  const C='ewnuczek_analytics_consent_v2', I='ewnuczek_analytics_internal_v1';
   const V='ewnuczek_analytics_visitor_v1';
   const get=k=>{try{return localStorage.getItem(k)}catch{return null}};
   const put=(k,v)=>{try{localStorage.setItem(k,v);return true}catch{return false}};
   const clear=()=>{try{localStorage.removeItem(V)}catch{}};
   const allowed=()=>get(C)==='granted'&&get(I)!=='1';
-  let counted=false;
+  let counted=false, visitorType=null;
+  function deviceProperties(){
+    const ua=navigator.userAgent;
+    const os=/Android/i.test(ua)?'Android':/iPhone|iPad|iPod/i.test(ua)?'iOS':/Windows/i.test(ua)?'Windows':/Macintosh/i.test(ua)?'macOS':/Linux/i.test(ua)?'Linux':'Other';
+    const browser=/Edg\//.test(ua)?'Edge':/OPR\//.test(ua)?'Opera':/Firefox|FxiOS/.test(ua)?'Firefox':/Chrome|CriOS/.test(ua)?'Chrome':/Safari/.test(ua)?'Safari':'Other';
+    const type=/iPad|Tablet/i.test(ua)||(/Android/i.test(ua)&&!/Mobile/i.test(ua))?'Tablet':/Mobile|iPhone|iPod/i.test(ua)?'Mobile':'Desktop';
+    return {$os:os,$browser:browser,$device_type:type};
+  }
   function send(event, extra) {
     if (!allowed() || !['$pageview','landing_app_click'].includes(event)) return;
     try {
       let id=get(V);
+      if(visitorType===null)visitorType=id?'returning':'new';
       if(!id){id=crypto.randomUUID();if(!put(V,id))return}
       let referring='direct';
       try{if(document.referrer)referring=new URL(document.referrer).hostname}catch{}
       const properties={
-        distinct_id:id,$process_person_profile:false,$geoip_disable:true,
-        $ip:null,$current_url:'https://ewnuczek.pl/',$pathname:'/',
-        $host:location.hostname,surface:'landing',referring_domain:referring
+        distinct_id:id,$process_person_profile:false,$geoip_disable:false,
+        $current_url:'https://ewnuczek.pl/',$pathname:'/',
+        $host:location.hostname,surface:'landing',referring_domain:referring,
+        analytics_version:2,visitor_type:visitorType,is_internal:false,
+        ...deviceProperties()
       };
       if(extra) properties.destination='app.ewnuczek.pl';
       fetch('https://eu.i.posthog.com/i/v0/e/',{
@@ -36,13 +46,13 @@
   const box=document.createElement('section');box.id='ew-analytics';
   box.setAttribute('aria-label','Opcjonalne statystyki');
   const p=document.createElement('p');
-  p.textContent='Czy zgadzasz się na opcjonalne statystyki PostHog (region UE)? Mierzymy odwiedziny i kliknięcia przejścia do aplikacji, używając losowego identyfikatora przeglądarki. Nie nagrywamy ekranu ani treści formularzy. PostHog otrzymuje dane techniczne połączenia. Zgodę możesz wycofać przyciskiem „Ustawienia statystyk”. Odmowa nie ogranicza działania strony.';
+  p.textContent='Czy zgadzasz się na opcjonalne statystyki PostHog (region UE)? Mierzymy odwiedziny, powroty i kliknięcia przejścia do aplikacji przy użyciu losowego identyfikatora przeglądarki oraz typ urządzenia, system i przeglądarkę. PostHog przetwarza IP połączenia do ustalenia przybliżonego kraju, regionu i miasta; lokalizacja może być niedokładna. Projekt ma włączoną anonimizację IP. Nie pobieramy GPS, nie nagrywamy ekranu ani formularzy. Zgodę możesz wycofać w „Ustawieniach statystyk”; odmowa nie ogranicza strony. Nowa przeglądarka może zostać policzona jako nowy odwiedzający.';
   box.appendChild(p);
   const status=document.createElement('p');status.setAttribute('aria-live','polite');box.appendChild(status);
   function hide(){box.hidden=true;settings.focus()}
   function button(label,action){const b=document.createElement('button');b.type='button';b.textContent=label;b.addEventListener('click',action);box.appendChild(b);return b}
   button('Zgadzam się',()=>{if(put(C,'granted')){hide();page()}else status.textContent='Nie można zapisać zgody. Statystyki pozostają wyłączone.'});
-  button('Odrzucam / wycofuję zgodę',()=>{put(C,'denied');clear();counted=false;hide()});
+  button('Odrzucam / wycofuję zgodę',()=>{put(C,'denied');clear();counted=false;visitorType=null;hide()});
   const internal=button('',()=>{const next=get(I)==='1'?'0':'1';put(I,next);if(next==='1'){put(C,'denied');clear();counted=false}refresh()});
   button('Zamknij',hide);
   const settings=document.createElement('button');settings.type='button';settings.id='ew-analytics-settings';settings.textContent='Ustawienia statystyk';
